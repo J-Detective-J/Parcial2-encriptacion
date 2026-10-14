@@ -1,9 +1,8 @@
 # Parcial2-encriptacion
-# Cifrador Educativo
+# Cifrador
 
 Programa en Python que genera números pseudoaleatorios de 40 cifras con cuatro técnicas distintas, busca primos entre ellos y los usa para cifrar y descifrar mensajes con tres algoritmos: **RSA**, **ElGamal** y **XOR por flujo**.
 
-> ⚠️ **Advertencia:** este proyecto es **didáctico**. Los primos que genera (~40 cifras ≈ 133 bits) son demasiado pequeños para uso real, y algunas técnicas de PRNG no son criptográficamente seguras. **No lo uses para proteger información sensible.**
 
 ---
 
@@ -28,43 +27,6 @@ python cifrador.py mi_archivo.txt
 
 Si el archivo no existe, el programa te muestra una plantilla con el formato esperado.
 
----
-
-## Formato de `instrucciones.txt`
-
-El archivo se compone de líneas `campo: valor`. Las líneas que empiezan con `#` son comentarios. El campo `mensaje` **debe ir al final** (consume todo lo que venga después, incluso varias líneas).
-
-| Campo       | Obligatorio | Valores posibles                                          |
-|-------------|-------------|-----------------------------------------------------------|
-| `semilla`   | Sí          | Un número o una frase                                     |
-| `algoritmo` | Sí          | `rsa`, `elgamal`, `xor` (o `1`, `2`, `3`)                 |
-| `tecnica`   | No          | `mersenne`, `sha256`, `lcg`, `xorshift` (o `1`, `2`, `3`, `4`). Por defecto: `mersenne` |
-| `accion`    | No          | `cifrar` o `descifrar`. Si se omite, se **detecta automáticamente**: si el mensaje empieza con `RSA|`, `ELG|` o `XOR|`, se descifra; si no, se cifra |
-| `mensaje`   | Sí          | El texto a cifrar o el texto cifrado a descifrar          |
-
-### Ejemplo para cifrar
-
-```
-semilla: 123456
-algoritmo: rsa
-tecnica: mersenne
-accion: cifrar
-mensaje: Hola, como andan capos?
-```
-
-### Ejemplo para descifrar
-
-```
-semilla: 123456
-algoritmo: rsa
-tecnica: mersenne
-accion: descifrar
-mensaje: RSA|1a2b3c...:4d5e6f...
-```
-
-> 🔑 **Regla de oro para descifrar:** usa **exactamente** la misma `semilla`, `algoritmo` y `tecnica` con los que cifraste. Si cambias cualquiera de los tres, las claves serán distintas y no podrás recuperar el mensaje.
-
----
 
 ## Cómo funciona
 
@@ -72,12 +34,12 @@ mensaje: RSA|1a2b3c...:4d5e6f...
 
 La clase `GeneradorNumerico` produce enteros de N cifras (por defecto 40). Se le pasa una técnica y una semilla:
 
-| Técnica     | Descripción                                                 | ¿Segura criptográficamente? |
-|-------------|-------------------------------------------------------------|-----------------------------|
-| `mersenne`  | Mersenne Twister (`random.Random` de Python)                | No                          |
-| `sha256`    | PRNG basado en hash SHA-256 con contador interno            | Sí                          |
-| `lcg`       | Generador congruencial lineal con periodo completo          | No                          |
-| `xorshift`  | Xorshift64 de Marsaglia                                     | No                          |
+| Técnica     | Descripción                                                 | 
+|-------------|-------------------------------------------------------------|
+| `mersenne`  | Mersenne Twister (`random.Random` de Python)                | 
+| `sha256`    | PRNG basado en hash SHA-256 con contador interno            |
+| `lcg`       | Generador congruencial lineal con periodo completo          | 
+| `xorshift`  | Xorshift64 de Marsaglia                                     |
 
 Todas las técnicas son **reproducibles**: la misma semilla + técnica produce la misma secuencia.
 
@@ -176,16 +138,3 @@ Si pones `EXPORTAR_PRIMOS = True`, al cifrar con RSA o ElGamal se guardará un a
 
 ---
 
-## Limitaciones
-
-- Los primos de 40 cifras (~133 bits) son **trivialmente factorizables** hoy en día. RSA real usa 2048–4096 bits.
-- Mersenne Twister, LCG y Xorshift **no son seguros** para uso criptográfico. Solo SHA-256 lo sería.
-- ElGamal con `g = 2` sin verificar que sea generador es una simplificación educativa.
-- El relleno `0x01 || sal` no es OAEP; en un contexto interactivo podría ser vulnerable a padding oracle.
-- El cifrado XOR por flujo depende de la calidad del PRNG y de que el nonce nunca se repita.
-
----
-
-## Licencia
-
-Uso libre con fines educativos. El autor no se responsabiliza del uso que se le dé.
