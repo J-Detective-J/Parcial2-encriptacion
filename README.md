@@ -1,5 +1,7 @@
 # Parcial2-encriptacion
 # Cifrador
+- Integrantes: Juan Pablo Beltrán, Santiago Alejandro Céspedes , Jhonatan David Valdés
+
 
 Programa en Python que genera números pseudoaleatorios de 40 cifras con cuatro técnicas distintas, busca primos entre ellos y los usa para cifrar y descifrar mensajes con tres algoritmos: **RSA**, **ElGamal** y **XOR por flujo**.
 
