@@ -173,7 +173,3 @@ Si pones `EXPORTAR_PRIMOS = True`, se guardará un archivo con todos los primos 
 
 ---
 
-
-## Licencia
-
-Uso libre con fines educativos. Los autores no se responsabilizan del uso que se le dé.
