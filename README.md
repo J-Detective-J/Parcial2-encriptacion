@@ -43,7 +43,6 @@ El archivo se compone de líneas `campo: valor`. Las líneas que empiezan con `#
 | `accion`   | No          | `cifrar` o `descifrar`. Si se omite, se **detecta automáticamente**: si el mensaje empieza con `J|`, se descifra; si no, se cifra |
 | `mensaje`  | Sí          | El texto a cifrar o el texto cifrado a descifrar                                 |
 
-> ❌ El campo `algoritmo` **ya no existe**. Ahora siempre se usa el Algoritmo J. Si aparece en el archivo, el programa muestra un error pidiendo eliminarlo.
 
 ### Ejemplo para cifrar
 
@@ -62,8 +61,6 @@ tecnica: mersenne
 accion: descifrar
 mensaje: J|2501fc4ed2be11d2f08bc2af3baf367d3:4041bc2686de03452fe069caf68fe882a:...
 ```
-
-> 🔑 **Regla de oro para descifrar:** usa **exactamente** la misma `semilla` y `tecnica` con las que cifraste. Si cambias cualquiera de las dos, las claves serán distintas y no podrás recuperar el mensaje.
 
 ---
 
@@ -113,13 +110,6 @@ Es el único algoritmo de cifrado del programa. Usa **tres primos distintos** `P
 ```
 J|2501fc4ed2be11d2f08bc2af3baf367d3:4041bc2686de03452fe069caf68fe882a:54fb5a6f...
 ```
-
-**Ventajas didácticas:** muestra cómo funciona un cifrado afín modular y por qué es importante que el multiplicador sea invertible módulo `P`.
-
-**Debilidades (por eso es didáctico):**
-- Mensajes idénticos producen bloques cifrados idénticos.
-- Con un par (texto plano, cifrado) conocido se pueden deducir `A` y `B` resolviendo un sistema de dos ecuaciones.
-- No tiene difusión ni confusión reales (a diferencia de AES o RSA).
 
 ### 4. Etiqueta de algoritmo
 
@@ -183,14 +173,6 @@ Si pones `EXPORTAR_PRIMOS = True`, se guardará un archivo con todos los primos 
 
 ---
 
-## Limitaciones
-
-- El **Algoritmo J** es un cifrado afín básico: no tiene difusión ni confusión reales, y con un par (texto plano, cifrado) se pueden deducir las claves.
-- Los primos de 40 cifras (~133 bits) son **trivialmente factorizables** hoy en día.
-- Mersenne Twister, LCG y Xorshift **no son seguros** para uso criptográfico. Solo SHA-256 lo sería.
-- El cifrado no autentica el mensaje más allá de una suma de comprobación de 8 caracteres hexadecimales (32 bits), insuficiente frente a un atacante con recursos.
-
----
 
 ## Licencia
 
