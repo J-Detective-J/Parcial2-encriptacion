@@ -6,7 +6,6 @@
 
 Programa en Python que genera números pseudoaleatorios de 40 cifras con cuatro técnicas distintas, busca primos entre ellos y los usa para cifrar y descifrar mensajes con el **Algoritmo J** (cifrado afín con primos).
 
-> ⚠️ **Advertencia:** este proyecto es **didáctico**. Los primos que genera (~40 cifras ≈ 133 bits) son demasiado pequeños para uso real, y algunas técnicas de PRNG no son criptográficamente seguras. **No lo uses para proteger información sensible.**
 
 ---
 
