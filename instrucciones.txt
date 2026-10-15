@@ -1,15 +1,13 @@
 # INSTRUCCIONES PARA EL CIFRADOR
 #
 # semilla   : un número o una frase (obligatorio)
-# algoritmo : rsa | elgamal | xor          (o 1 | 2 | 3)
 # tecnica   : mersenne | sha256 | lcg | xorshift   (o 1 | 2 | 3 | 4)
 # accion    : cifrar | descifrar
 #
-# Para DESCIFRAR: usa la misma semilla, algoritmo y técnica con los que
-# cifraste, y pega el mensaje cifrado (empieza con RSA| ELG| o XOR|).
-
+# Para DESCIFRAR: usa la misma semilla y técnica con las que
+# cifraste, y pega el mensaje cifrado (empieza con J|).
+ 
 semilla: 123456
-algoritmo: rsa
 tecnica: mersenne
 accion: cifrar
 mensaje: Hola, como andan capos?
