@@ -134,195 +134,88 @@ def es_candidato_primo(n):
     return True
 
 
-BYTES_SAL = 4
-
-
-class MotorRSA:
-    """Motor RSA: cifra/descifra enteros y texto con claves p, q, e."""
-
-    def __init__(self, p, q, e=65537):
-        if p == q:
-            raise ValueError("p y q deben ser distintos")
-        phi = (p - 1) * (q - 1)
-        if math.gcd(e, phi) != 1:
-            raise ValueError("e no es coprimo con phi; elegir otros primos")
-
-        self.p, self.q, self.e = p, q, e
-        self.n = p * q
-        self._d = pow(e, -1, phi)
-
-        self.bytes_bloque = (self.n.bit_length() - 1) // 8
-        self.bytes_mensaje = self.bytes_bloque - 1 - BYTES_SAL
-
-    @property
-    def clave_publica(self):
-        return (self.e, self.n)
-
-    @property
-    def clave_privada(self):
-        return (self._d, self.n)
-
-    def codificar_entero(self, m):
-        if not 0 <= m < self.n:
-            raise ValueError("El número debe estar entre 0 y n-1")
-        return pow(m, self.e, self.n)
-
-    def descodificar_entero(self, c):
-        return pow(c, self._d, self.n)
-
-    def codificar_texto(self, mensaje):
-        """Recibe un str y devuelve el texto cifrado como cadena hexadecimal."""
-        datos = mensaje.encode("utf-8")
-        trozos = [datos[i:i + self.bytes_mensaje]
-                  for i in range(0, len(datos), self.bytes_mensaje)] or [b""]
-
-        bloques = []
-        for trozo in trozos:
-            sal = random.SystemRandom().randbytes(BYTES_SAL)
-            m = int.from_bytes(b"\x01" + sal + trozo, "big")
-            bloques.append(format(self.codificar_entero(m), "x"))
-        return ":".join(bloques)
-
-    def descodificar_texto(self, cifrado):
-        """Recibe la cadena hexadecimal y devuelve el mensaje original."""
-        datos = b""
-        for bloque in cifrado.split(":"):
-            m = self.descodificar_entero(int(bloque, 16))
-            b = m.to_bytes((m.bit_length() + 7) // 8, "big")
-            if not b or b[0] != 1:
-                raise ValueError("Bloque inválido: clave incorrecta o mensaje alterado")
-            datos += b[1 + BYTES_SAL:]
-        return datos.decode("utf-8")
-
-
-class BaseCifrado:
-    """Clase base: todos los algoritmos se usan igual (cifrar / descifrar)."""
-    etiqueta = ""
-
-    def cifrar(self, texto):
-        return self.etiqueta + "|" + self._cifrar(texto)
-
-    def descifrar(self, cifrado):
-        etiqueta, _, cuerpo = cifrado.strip().partition("|")
-        if etiqueta != self.etiqueta:
-            raise ValueError(f"Este mensaje fue cifrado con '{etiqueta}', "
-                             f"pero tienes seleccionado '{self.etiqueta}'")
-        return self._descifrar(cuerpo)
-
-    def claves(self):
-        return []
-
-
 def dividir_bytes(datos, tamano):
     """Parte unos bytes en trozos de 'tamano' bytes (al menos un trozo)."""
     return [datos[i:i + tamano] for i in range(0, len(datos), tamano)] or [b""]
 
 
-class CifradorRSA(BaseCifrado):
-    """Usa la clase MotorRSA. Elige p y q entre los primos encontrados."""
-    etiqueta = "RSA"
+class AlgoritmoJ:
+    """
+    Algoritmo J: cifrado afín con primos.
+
+    Clave: tres primos DISTINTOS de los encontrados  ->  P, A y B
+        P = módulo,  A = multiplicador,  B = desplazamiento
+
+    Cada bloque del mensaje, convertido a número m, se cifra así:
+        c = (A * m + B) mod P
+    y se descifra con el inverso de A:
+        m = (c - B) * A^-1 mod P        (A^-1 = pow(A, -1, P))
+
+    Como P es primo, A siempre tiene inverso módulo P, y por eso el
+    descifrado siempre es posible.
+
+    Detalles:
+      - Cada bloque se arma como 0x01 + trozo del mensaje (el 0x01 conserva
+        los ceros a la izquierda).
+      - Antes de cifrar se antepone al mensaje una suma de comprobación de 8
+        caracteres (SHA-256), para detectar claves incorrectas y mensajes
+        alterados al descifrar.
+
+    AVISO: es un algoritmo didáctico y básico. No es seguro: mensajes iguales
+    dan bloques cifrados iguales, y con un par (texto, cifrado) conocido se
+    pueden deducir A y B resolviendo un sistema de ecuaciones.
+    """
+    etiqueta = "J"
 
     def __init__(self, primos, rng):
-        while True:
-            p, q = rng.sample(primos, 2)
-            try:
-                self.sistema = MotorRSA(p, q)
-                break
-            except ValueError:
-                continue
+        if len(primos) < 3:
+            raise ValueError("Se necesitan al menos 3 primos; aumenta CANTIDAD")
+        p, a, b = rng.sample(primos, 3)
+        self.P = p
+        self._A = a % p
+        self._B = b % p
+        self._A_inv = pow(self._A, -1, p)
 
-    def _cifrar(self, texto):
-        return self.sistema.codificar_texto(texto)
-
-    def _descifrar(self, cuerpo):
-        return self.sistema.descodificar_texto(cuerpo)
-
-    def claves(self):
-        s = self.sistema
-        return [("p (privado)", s.p), ("q (privado)", s.q),
-                ("n = p*q (público)", s.n), ("e (público)", s.e),
-                ("d (privado)", s.clave_privada[0])]
-
-
-class CifradorElGamal(BaseCifrado):
-    """ElGamal: clave pública (p, g, y), privada x. Cifra bloques con k aleatorio."""
-    etiqueta = "ELG"
-
-    def __init__(self, primos, rng):
-        self.p = rng.choice(primos)
-        self.g = 2
-        self._x = rng.randrange(2, self.p - 2)
-        self.y = pow(self.g, self._x, self.p)
-        self.bytes_bloque = (self.p.bit_length() - 1) // 8
-        self.bytes_mensaje = self.bytes_bloque - 1 - BYTES_SAL
-
-    def _cifrar(self, texto):
-        azar = random.SystemRandom()
-        bloques = []
-        for trozo in dividir_bytes(texto.encode("utf-8"), self.bytes_mensaje):
-            m = int.from_bytes(b"\x01" + azar.randbytes(BYTES_SAL) + trozo, "big")
-            k = azar.randrange(2, self.p - 2)
-            c1 = pow(self.g, k, self.p)
-            c2 = (m * pow(self.y, k, self.p)) % self.p
-            bloques.append(format(c1, "x") + "," + format(c2, "x"))
-        return ":".join(bloques)
-
-    def _descifrar(self, cuerpo):
-        datos = bytearray()
-        for bloque in cuerpo.split(":"):
-            c1, c2 = (int(v, 16) for v in bloque.split(","))
-            s = pow(c1, self._x, self.p)
-            m = (c2 * pow(s, -1, self.p)) % self.p
-            b = m.to_bytes((m.bit_length() + 7) // 8, "big")
-            if not b or b[0] != 1:
-                raise ValueError("Bloque inválido")
-            datos.extend(b[1 + BYTES_SAL:])
-        return datos.decode("utf-8")
-
-    def claves(self):
-        return [("p (público)", self.p), ("g (público)", self.g),
-                ("y = g^x mod p (público)", self.y), ("x (privado)", self._x)]
-
-
-class CifradorXOR(BaseCifrado):
-    """Cifrado simétrico: la clave es la semilla. Genera keystream con la PRNG elegida."""
-    etiqueta = "XOR"
-
-    def __init__(self, tecnica, semilla):
-        self.tecnica = tecnica
-        self.semilla = semilla
-
-    def _keystream(self, nonce, longitud):
-        base = str(self.semilla).encode() + nonce
-        semilla_maquina = int.from_bytes(hashlib.sha256(base).digest()[:8], "big")
-        maquina = GeneradorNumerico(self.tecnica, semilla_maquina, CIFRAS)
-        flujo = bytearray()
-        while len(flujo) < longitud:
-            flujo.extend(maquina.extraer_numero().to_bytes(17, "big")[1:])
-        return bytes(flujo[:longitud])
+        # Bytes por bloque: el número del bloque debe ser menor que P
+        self.bytes_bloque = (p.bit_length() - 1) // 8
+        self.bytes_mensaje = self.bytes_bloque - 1
 
     @staticmethod
-    def _xor(a, b):
-        return bytes(x ^ y for x, y in zip(a, b))
+    def _control(texto):
+        return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:8]
 
-    def _cifrar(self, texto):
-        datos = texto.encode("utf-8")
-        datos = hashlib.sha256(datos).digest()[:4] + datos
-        nonce = random.SystemRandom().randbytes(8)
-        cifrado = self._xor(datos, self._keystream(nonce, len(datos)))
-        return nonce.hex() + ":" + cifrado.hex()
+    def cifrar(self, texto):
+        texto = self._control(texto) + texto
+        bloques = []
+        for trozo in dividir_bytes(texto.encode("utf-8"), self.bytes_mensaje):
+            m = int.from_bytes(b"\x01" + trozo, "big")
+            c = (self._A * m + self._B) % self.P
+            bloques.append(format(c, "x"))
+        return self.etiqueta + "|" + ":".join(bloques)
 
-    def _descifrar(self, cuerpo):
-        nonce_hex, cifrado_hex = cuerpo.split(":")
-        nonce, cifrado = bytes.fromhex(nonce_hex), bytes.fromhex(cifrado_hex)
-        datos = self._xor(cifrado, self._keystream(nonce, len(cifrado)))
-        control, mensaje = datos[:4], datos[4:]
-        if hashlib.sha256(mensaje).digest()[:4] != control:
+    def descifrar(self, cifrado):
+        etiqueta, _, cuerpo = cifrado.strip().partition("|")
+        if etiqueta != self.etiqueta:
+            raise ValueError(f"Este mensaje fue cifrado con '{etiqueta}', "
+                             f"pero este programa usa el Algoritmo '{self.etiqueta}'")
+        datos = bytearray()
+        for bloque in cuerpo.split(":"):
+            c = int(bloque, 16)
+            m = ((c - self._B) * self._A_inv) % self.P
+            b = m.to_bytes((m.bit_length() + 7) // 8, "big")
+            if not b or b[0] != 1:
+                raise ValueError("Bloque inválido: clave incorrecta o mensaje alterado")
+            datos.extend(b[1:])
+        plano = datos.decode("utf-8")
+        control, texto = plano[:8], plano[8:]
+        if control != self._control(texto):
             raise ValueError("Comprobación fallida: clave incorrecta o mensaje alterado")
-        return mensaje.decode("utf-8")
+        return texto
 
     def claves(self):
-        return [("semilla (clave secreta)", self.semilla)]
+        return [("P (módulo, primo)", self.P),
+                ("A (multiplicador)", self._A),
+                ("B (desplazamiento)", self._B)]
 
 
 def resolver_semilla(texto):
@@ -341,7 +234,6 @@ class ContextoCifrado:
     def __init__(self):
         self.semilla = None
         self.tecnica = None
-        self.algoritmo = None
         self.primos = []
         self.cifrador = None
         self.ultimo_cifrado = None
@@ -361,23 +253,13 @@ class ContextoCifrado:
 
     def preparar_cifrador(self):
         """Las claves salen de la semilla: misma configuración => mismas claves."""
-        rng = random.Random(f"{self.semilla}|{self.tecnica}|{self.algoritmo}")
-        if self.algoritmo == "rsa":
-            self.cifrador = CifradorRSA(self.primos, rng)
-        elif self.algoritmo == "elgamal":
-            self.cifrador = CifradorElGamal(self.primos, rng)
-        else:
-            self.cifrador = CifradorXOR(self.tecnica, self.semilla)
+        rng = random.Random(f"{self.semilla}|{self.tecnica}|J")
+        self.cifrador = AlgoritmoJ(self.primos, rng)
         self.ultimo_cifrado = None
 
 
 ARCHIVO_ENTRADA = "instrucciones.txt"
 
-ALGORITMOS = {
-    "1": "rsa", "rsa": "rsa",
-    "2": "elgamal", "elgamal": "elgamal",
-    "3": "xor", "xor": "xor", "flujo xor": "xor", "flujo": "xor",
-}
 TECNICAS = {
     "1": "mersenne", "mersenne": "mersenne", "mersenne twister": "mersenne",
     "2": "sha256", "sha256": "sha256", "sha-256": "sha256", "hash": "sha256",
@@ -388,19 +270,17 @@ ACCIONES = {
     "cifrar": "cifrar", "encriptar": "cifrar", "1": "cifrar",
     "descifrar": "descifrar", "desencriptar": "descifrar", "2": "descifrar",
 }
-ETIQUETAS = ("RSA|", "ELG|", "XOR|")
+ETIQUETAS = ("J|",)
 
-PLANTILLA = """# INSTRUCCIONES PARA EL CIFRADOR
+PLANTILLA = """# INSTRUCCIONES PARA EL CIFRADOR (Algoritmo J)
 # Una línea por campo. El campo "mensaje" va SIEMPRE al final.
 # semilla   : un número o una frase (obligatorio)
-# algoritmo : rsa | elgamal | xor          (o 1 | 2 | 3)
 # tecnica   : mersenne | sha256 | lcg | xorshift   (o 1 | 2 | 3 | 4)
 # accion    : cifrar | descifrar
-# Para DESCIFRAR: usa la misma semilla, algoritmo y técnica con los que
-# cifraste, y pega el mensaje cifrado (empieza con RSA| ELG| o XOR|).
+# Para DESCIFRAR: usa la misma semilla y técnica con las que cifraste,
+# y pega el mensaje cifrado (empieza con J|).
 
 semilla: mi semilla secreta
-algoritmo: rsa
 tecnica: mersenne
 accion: cifrar
 mensaje: Hola, este es mi mensaje secreto
@@ -439,21 +319,20 @@ def cargar_configuracion(ruta):
             resto = [valor.lstrip()] + lineas[i + 1:]
             datos["mensaje"] = "\n".join(resto).rstrip("\n")
             break
-        if campo not in ("semilla", "algoritmo", "tecnica", "accion"):
+        if campo == "algoritmo":
+            raise ErrorConfiguracion(f"Línea {i + 1}: el campo 'algoritmo' ya no existe; "
+                                     "siempre se usa el Algoritmo J. Elimina esa línea.")
+        if campo not in ("semilla", "tecnica", "accion"):
             raise ErrorConfiguracion(f"Campo desconocido en la línea {i + 1}: {campo!r}")
         datos[campo] = valor.strip()
     return datos
 
 
 def validar_configuracion(datos):
-    """Valida los campos y devuelve (semilla_texto, tecnica, algoritmo, accion, mensaje)."""
-    for obligatorio in ("semilla", "algoritmo", "mensaje"):
+    """Valida los campos y devuelve (semilla_texto, tecnica, accion, mensaje)."""
+    for obligatorio in ("semilla", "mensaje"):
         if not datos.get(obligatorio, "").strip():
             raise ErrorConfiguracion(f"Falta el campo obligatorio '{obligatorio}'")
-
-    algoritmo = ALGORITMOS.get(normalizar_texto(datos["algoritmo"]))
-    if algoritmo is None:
-        raise ErrorConfiguracion("Algoritmo no válido. Usa: rsa, elgamal o xor (o 1, 2, 3)")
 
     tecnica = TECNICAS.get(normalizar_texto(datos.get("tecnica", "mersenne")))
     if tecnica is None:
@@ -467,18 +346,19 @@ def validar_configuracion(datos):
     else:
         accion = "descifrar" if mensaje.strip().startswith(ETIQUETAS) else "cifrar"
 
-    return datos["semilla"], tecnica, algoritmo, accion, mensaje
+    return datos["semilla"], tecnica, accion, mensaje
 
 
-def procesar_mensaje(semilla_texto, tecnica, algoritmo, accion, mensaje):
+def procesar_mensaje(semilla_texto, tecnica, accion, mensaje):
     """Prepara la máquina y los primos, y cifra/descifra. Devuelve (sesion, resultado)."""
     sesion = ContextoCifrado()
     sesion.semilla = resolver_semilla(semilla_texto)
     sesion.tecnica = tecnica
-    sesion.algoritmo = algoritmo
-    if algoritmo in ("rsa", "elgamal"):
-        sesion.buscar_primos()
-    sesion.preparar_cifrador()
+    sesion.buscar_primos()
+    try:
+        sesion.preparar_cifrador()
+    except ValueError as error:
+        raise ErrorConfiguracion(str(error))
 
     if accion == "cifrar":
         return sesion, sesion.cifrador.cifrar(mensaje)
@@ -487,8 +367,8 @@ def procesar_mensaje(semilla_texto, tecnica, algoritmo, accion, mensaje):
         return sesion, sesion.cifrador.descifrar(mensaje.strip())
     except (ValueError, UnicodeDecodeError, OverflowError, IndexError) as error:
         raise ErrorConfiguracion(
-            "No se pudo descifrar. Revisa que la semilla, la técnica y el algoritmo "
-            f"sean los mismos usados al cifrar y que el mensaje esté completo. ({error})")
+            "No se pudo descifrar. Revisa que la semilla y la técnica "
+            f"sean las mismas usadas al cifrar y que el mensaje esté completo. ({error})")
 
 
 def imprimir_resultado(sesion, accion, mensaje, resultado, semilla_texto):
@@ -498,9 +378,8 @@ def imprimir_resultado(sesion, accion, mensaje, resultado, semilla_texto):
     print(f"Acción     : {accion}")
     print(f"Semilla    : {semilla_texto}  (valor numérico: {sesion.semilla})")
     print(f"Técnica    : {sesion.tecnica}")
-    print(f"Algoritmo  : {sesion.algoritmo}")
-    if sesion.algoritmo in ("rsa", "elgamal"):
-        print(f"Primos encontrados en los {CANTIDAD:,} números: {len(sesion.primos)}")
+    print("Algoritmo  : Algoritmo J")
+    print(f"Primos encontrados en los {CANTIDAD:,} números: {len(sesion.primos)}")
     print()
     if accion == "cifrar":
         print("--- Mensaje original ---")
@@ -527,12 +406,10 @@ def main():
 
     try:
         datos = cargar_configuracion(entrada)
-        semilla_texto, tecnica, algoritmo, accion, mensaje = validar_configuracion(datos)
-        print(f"Leyendo '{entrada}': acción={accion}, algoritmo={algoritmo}, "
-              f"técnica={tecnica}")
-        if algoritmo in ("rsa", "elgamal"):
-            print(f"Generando {CANTIDAD:,} números de {CIFRAS} cifras y buscando primos...")
-        sesion, resultado = procesar_mensaje(semilla_texto, tecnica, algoritmo, accion, mensaje)
+        semilla_texto, tecnica, accion, mensaje = validar_configuracion(datos)
+        print(f"Leyendo '{entrada}': acción={accion}, técnica={tecnica}")
+        print(f"Generando {CANTIDAD:,} números de {CIFRAS} cifras y buscando primos...")
+        sesion, resultado = procesar_mensaje(semilla_texto, tecnica, accion, mensaje)
     except ErrorConfiguracion as error:
         print("ERROR:", error)
         return 1
